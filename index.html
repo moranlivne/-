@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>טשטושי פלגה</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.12/dist/face-api.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.17.0"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tracking.js/1.1.3/tracking-min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tracking.js/1.1.3/data/face-min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        body { font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f3f4f6; user-select: none; }
+        #workspace { position: relative; display: flex; background-image: repeating-linear-gradient(45deg, #e5e7eb 25%, transparent 25%, transparent 75%, #e5e7eb 75%, #e5e7eb), repeating-linear-gradient(45deg, #e5e7eb 25%, #f9fafb 25%, #f9fafb 75%, #e5e7eb 75%, #e5e7eb); background-position: 0 0, 10px 10px; background-size: 20px 20px; overflow: hidden; border-radius: 0.5rem; border: 1px solid #d1d5db; width: 100%; height: 100%; box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.06); }
+        #mainCanvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
+        #brushCursor { position: absolute; top: 0; left: 0; border: 2px solid rgba(255, 255, 255, 0.9); background-color: rgba(59, 130, 246, 0.4); border-radius: 50%; pointer-events: none; display: none; z-index: 50; box-shadow: 0 0 2px 1px rgba(0,0,0,0.4); will-change: transform, width, height; }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        .tab-btn { display: flex; align-items: center; gap: 8px; padding: 0.5rem 1rem; font-size: 0.875rem; transition: background-color 0.2s; white-space: nowrap; border-right: 1px solid #cbd5e1; cursor: pointer; }
+        .tab-active { background-color: #e2e8f0; color: #1e293b; font-weight: bold; border-bottom: 2px solid #3b82f6; }
+        .tab-inactive { background-color: #f8fafc; color: #64748b; }
+        .tab-inactive:hover { background-color: #f1f5f9; }
+        .tab-close-wrapper { opacity: 0.5; padding: 4px; border-radius: 50%; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+        .tab-close-wrapper:hover { opacity: 1; background-color: rgba(239, 68, 68, 0.2); color: #ef4444; }
+        .tool-btn.active { background-color: white; color: #1d4ed8; box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05); border: 1px solid #bfdbfe; }
+        #toastContainer { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 9999; display: flex; flex-direction: column; gap: 10px; pointer-events: none; }
+        .toast-msg { background-color: rgba(15, 23, 42, 0.9); color: white; padding: 12px 24px; border-radius: 8px; font-size: 0.875rem; box-shadow: 0 4px 6px rgba(0,0,0,0.1); backdrop-filter: blur(4px); transition: opacity 0.3s ease; }
+        .drop-active { border-color: #3b82f6 !important; background-color: #eff6ff !important; }
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden text-gray-800">
+
+    <header class="bg-slate-900 text-white p-4 shadow-md flex justify-between items-center z-10 shrink-0">
+        <div class="flex items-center gap-3">
+            <i data-lucide="shield-check" class="w-8 h-8 text-blue-400"></i>
+            <div><h1 class="text-xl font-bold">טשטושי פלגה</h1></div>
+        </div>
+        <div id="modelStatus" class="flex items-center gap-2 text-sm bg-slate-800 px-3 py-1.5 rounded-full border border-slate-700">
+            <div class="w-2 h-2 rounded-full bg-yellow-400 animate-pulse" id="statusDot"></div>
+            <span id="statusText">טוען מערכת...</span>
+        </div>
+    </header>
+
+    <div class="flex-1 flex overflow-hidden relative">
+
+        <div id="viewFolder" class="absolute inset-0 z-30 bg-gray-50 flex flex-col items-center justify-center p-6 text-center overflow-y-auto">
+            <img src="logo.jpg" alt="לוגו פלגה" class="w-48 md:w-64 h-auto mb-8 object-contain drop-shadow-md pointer-events-none" onerror="this.style.display='none'">
+            <div id="dropZone" class="bg-white p-10 rounded-2xl shadow-xl border-2 border-dashed border-gray-200 transition-colors max-w-2xl w-full">
+                <i data-lucide="image-plus" class="w-20 h-20 text-blue-500 mx-auto mb-4 pointer-events-none"></i>
+                <h2 class="text-2xl font-bold text-gray-800 mb-2 pointer-events-none">טעינת תמונות לעריכה</h2>
+                <p class="text-gray-500 mb-8 pointer-events-none">ניתן לגרור ולשחרר קבצים לכאן, או לבחור מהמחשב.</p>
+                <div class="flex flex-col sm:flex-row gap-4 justify-center relative z-10">
+                    <input type="file" id="initialFileInput" multiple accept="image/jpeg, image/png, image/webp" class="hidden">
+                    <button onclick="document.getElementById('initialFileInput').click()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-xl shadow-lg transition-transform transform hover:scale-105 flex items-center justify-center gap-3">
+                        <i data-lucide="file-image"></i> בחר תמונות
+                    </button>
+                    <input type="file" id="folderInput" webkitdirectory directory multiple accept="image/jpeg, image/png, image/webp" class="hidden">
+                    <button onclick="document.getElementById('folderInput').click()" class="bg-slate-700 hover:bg-slate-800 text-white font-bold py-3 px-6 rounded-xl shadow-lg transition-transform transform hover:scale-105 flex items-center justify-center gap-3">
+                        <i data-lucide="folder-search"></i> בחר תיקייה
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div id="viewEditor" class="absolute inset-0 z-10 flex flex-col md:flex-row hidden bg-gray-100">
+            <aside class="w-full md:w-80 bg-white shadow-lg flex flex-col overflow-y-auto border-l border-gray-200 shrink-0">
+                <div class="p-5 space-y-6">
+                    <div>
+                        <h2 class="text-sm font-bold text-gray-500 uppercase tracking-wider mb-3 flex justify-between">1. זיהוי אוטומטי <span class="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded">פנים + מסכים</span></h2>
+                        <button id="btnAutoDetect" disabled class="w-full flex items-center justify-center gap-2 bg-blue-100 hover:bg-blue-200 disabled:bg-slate-200 disabled:text-slate-400 text-blue-800 font-bold py-3 px-4 rounded-lg transition-colors shadow-sm border border-blue-200">
+                            <i data-lucide="scan-face" class="w-5 h-5"></i> סרוק תמונה נוכחית
+                        </button>
+                    </div>
+                    <div class="border-t border-gray-100 pt-5">
+                        <h2 class="text-sm font-bold text-gray-500 uppercase tracking-wider mb-3">2. כלים ידניים</h2>
+                        <div class="grid grid-cols-4 gap-2 bg-slate-100 p-1 rounded-lg mb-4">
+                            <button data-mode="brush" class="tool-btn active flex flex-col items-center justify-center py-2 px-1 rounded-md text-gray-600 transition-all text-xs font-medium" title="מברשת (B)"><i data-lucide="paintbrush-2" class="w-4 h-4 mb-1"></i> מברשת</button>
+                            <button data-mode="polygon" class="tool-btn flex flex-col items-center justify-center py-2 px-1 rounded-md text-gray-600 transition-all text-xs font-medium" title="פוליגון (P)"><i data-lucide="hexagon" class="w-4 h-4 mb-1"></i> פוליגון</button>
+                            <button data-mode="box" class="tool-btn flex flex-col items-center justify-center py-2 px-1 rounded-md text-gray-600 transition-all text-xs font-medium" title="מלבן (M)"><i data-lucide="square-dashed" class="w-4 h-4 mb-1"></i> מלבן</button>
+                            <button data-mode="erase" class="tool-btn flex flex-col items-center justify-center py-2 px-1 rounded-md text-gray-600 transition-all text-xs font-medium" title="מחק (E)"><i data-lucide="eraser" class="w-4 h-4 mb-1"></i> מחק</button>
+                        </div>
+                        <div id="polygonHelper" class="hidden bg-blue-50 text-blue-700 text-xs p-2 rounded mb-4 text-center border border-blue-100"><strong>פוליגון:</strong> הקלק להוספת נקודות. דאבל-קליק או Enter לסיום.</div>
+                        <div class="space-y-5">
+                            <div>
+                                <label class="flex justify-between text-sm font-medium text-gray-700 mb-2"><span>גודל מברשת </span><span class="text-xs text-gray-400 font-normal">מקשים [ ]</span><span id="brushSizeLabel" class="text-blue-600 font-bold">60px</span></label>
+                                <input type="range" id="brushSize" min="5" max="400" value="60" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer">
+                            </div>
+                            <div>
+                                <label class="flex justify-between text-sm font-medium text-gray-700 mb-2"><span>עוצמת טשטוש</span><span id="blurValueLabel">55px</span></label>
+                                <input type="range" id="blurIntensity" min="5" max="150" value="55" class="w-full h-2 bg-blue-200 rounded-lg appearance-none cursor-pointer">
+                            </div>
+                            <div class="bg-blue-50 p-3 rounded-lg border border-blue-100">
+                                <label class="flex justify-between text-sm font-bold text-blue-800 mb-2"><span>ריכוך קצוות</span><span id="featherValueLabel">15px</span></label>
+                                <input type="range" id="featherIntensity" min="0" max="50" value="15" class="w-full h-2 bg-blue-200 rounded-lg appearance-none cursor-pointer">
+                            </div>
+                            <div class="grid grid-cols-2 gap-2 pt-2 border-t border-gray-100">
+                                <button id="btnUndo" class="text-sm bg-slate-100 text-slate-700 hover:bg-slate-200 font-medium flex items-center justify-center gap-1 py-2 px-2 rounded transition-colors" title="בטל (Ctrl+Z)"><i data-lucide="undo-2" class="w-4 h-4"></i> אחורה</button>
+                                <button id="btnClearCurrent" class="text-sm bg-red-50 text-red-600 hover:bg-red-100 font-medium flex items-center justify-center gap-1 py-2 px-2 rounded transition-colors" title="מחק כל הטשטושים"><i data-lucide="trash-2" class="w-4 h-4"></i> נקה הכל</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="border-t border-gray-100 pt-5 mt-auto pb-5 space-y-3">
+                        <button id="btnSaveSingle" class="w-full flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-900 text-white font-medium py-3 px-4 rounded-xl transition-colors shadow-md"><i data-lucide="image" class="w-5 h-5"></i> שמור תמונה נוכחית בלבד</button>
+                        <button id="btnSaveAll" class="w-full flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white font-bold py-4 px-4 rounded-xl transition-colors shadow-lg text-lg"><i data-lucide="folder-down" class="w-6 h-6"></i> ייצא את כל התמונות (ZIP)</button>
+                    </div>
+                </div>
+            </aside>
+            <section class="flex-1 flex flex-col overflow-hidden bg-gray-300">
+                <div class="flex bg-slate-200 border-b border-slate-300 shrink-0 items-center pr-2 shadow-sm z-20">
+                    <div id="tabsContainer" class="flex overflow-x-auto flex-1 items-center gap-1 p-1"></div>
+                    <input type="file" id="addMoreInput" multiple accept="image/jpeg, image/png, image/webp" class="hidden">
+                    <button onclick="document.getElementById('addMoreInput').click()" class="mr-2 ml-4 flex items-center justify-center w-8 h-8 rounded-full bg-blue-100 hover:bg-blue-200 text-blue-600 transition-colors shadow-sm shrink-0" title="הוסף תמונות"><i data-lucide="plus" class="w-5 h-5"></i></button>
+                </div>
+                <div class="flex-1 overflow-hidden flex flex-col relative" id="workspaceContainer">
+                    <div class="absolute top-4 right-4 z-40">
+                        <button onclick="resetView()" class="bg-white/80 hover:bg-white text-gray-700 p-2 rounded-lg shadow-md backdrop-blur-sm transition-all" title="מרכז תמונה"><i data-lucide="focus" class="w-5 h-5"></i></button>
+                    </div>
+                    <div id="workspace" class="flex-1 w-full h-full m-4 rounded-lg">
+                        <canvas id="mainCanvas"></canvas>
+                        <div id="brushCursor"></div>
+                    </div>
+                    <div class="absolute bottom-6 left-1/2 transform -translate-x-1/2 bg-black/60 text-white text-xs px-5 py-2.5 rounded-full pointer-events-none flex gap-5 backdrop-blur-sm z-40 shadow-lg">
+                        <span><i data-lucide="mouse" class="w-3 h-3 inline mr-1"></i> גלגלת לזום</span>
+                        <span><i data-lucide="move" class="w-3 h-3 inline mr-1"></i> Space + גרירה להזזה</span>
+                        <span><i data-lucide="undo-2" class="w-3 h-3 inline mr-1"></i> Ctrl+Z לביטול</span>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <div id="loadingOverlay" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex flex-col items-center justify-center z-50 hidden">
+        <div class="bg-white p-8 rounded-2xl shadow-2xl flex flex-col items-center max-w-md text-center">
+            <i data-lucide="loader-2" class="w-16 h-16 text-blue-600 animate-spin mb-4"></i>
+            <h3 id="loadingTitle" class="text-xl font-bold text-gray-900 mb-2">מעבד...</h3>
+            <p id="loadingDesc" class="text-sm text-gray-500">אנא המתן.</p>
+        </div>
+    </div>
+    <div id="toastContainer"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,36 @@
+{
+  "name": "tistos-blur",
+  "version": "1.0.0",
+  "description": "טשטושי פלגה - אפליקציה לטשטוש פנים ומסכים בתמונות",
+  "main": "main.js",
+  "author": "",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --mac",
+    "build:mac": "electron-builder --mac",
+    "pack": "electron-builder --mac --dir"
+  },
+  "build": {
+    "appId": "com.tistos.blur",
+    "productName": "טשטושי פלגה",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "index.html",
+      "app.js"
+    ],
+    "mac": {
+      "category": "public.app-category.graphics-design",
+      "target": ["dmg", "zip"],
+      "artifactName": "${productName}-${version}.${ext}"
+    }
+  },
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1"
+  }
+}
